@@ -1,6 +1,9 @@
 import fs from "fs";
 import MLJSON from "../../MusicLeagueJSON/MusicLeagueSubmittedSongs.json" with { type: "json" }
 
+export type Header = "Track name" | "Artist name" | "Album" | "Playlist name" | "Type" | "ISRC" | "Spotify - id";
+type TrackCollection = Record<string, Record<string, string>>;
+
 const jsonFilePath = "MusicLeagueSubmittedSongs.json";
 const jsonFolderPath = "../MusicLeagueJSON";
 const path = `${jsonFolderPath}/${jsonFilePath}`;
@@ -10,7 +13,6 @@ const path = `${jsonFolderPath}/${jsonFilePath}`;
  * @returns some song object if exists, else undefined
  * @param songTitle: song title string
  */
-export type Header = "Track name" | "Artist name" | "Album" | "Playlist name" | "Type" | "ISRC" | "Spotify - id";
 export function trackChecker(trackSearch: string | null, header: Header): string {
     if(!trackSearch) return "No search term submitted.";
     const trackResultString: Set<string> = new Set();
@@ -22,12 +24,12 @@ export function trackChecker(trackSearch: string | null, header: Header): string
             switch (header) {
                 case "Track name":
                     trackResultString.add(
-                        `"${value[header]}" by "${value["Artist name"]}" in album "${value["Album"]}".\nFrom playlist: ${value["Playlist name"]}\nhttps://open.spotify.com/track/${value["Spotify - id"]}`
+                        `"${value[header]}" by "${value["Artist name"]}" in album "${value["Album"]}".\nNumber of submissions: ${value["Count"]}\nhttps://open.spotify.com/track/${value["Spotify - id"]}`
                     );        
                     break;
                 case "Artist name":
                     trackResultString.add(
-                        `"${value["Track name"]}" by "${value[header]}" in album "${value["Album"]}".\nFrom playlist: ${value["Playlist name"]}\nhttps://open.spotify.com/track/${value["Spotify - id"]}`
+                        `"${value["Track name"]}" by "${value[header]}" in album "${value["Album"]}".\nNumber of submissions: ${value["Count"]}\nhttps://open.spotify.com/track/${value["Spotify - id"]}`
                     )
                     break;
             }
@@ -56,12 +58,13 @@ export async function populateJsonWithSongs(fileUrl: string): Promise<string> {
 
     const textContents = (await contents.text()); //csv string
     const textArray = textContents.split("\n");
-
-    const musicObj: Record<string, Record<string, string>> = fs.existsSync(path) ? MLJSON : {};
+ 
+    const musicObj: TrackCollection = {};
     const headers: string[] = [];
     let spotifyIdHeaderIndex: number = -1;
     const currentEntriesCount = Object.keys(musicObj).length;
     let addedEntriesCount = 0;
+    const dupeSongs: string[] = [];
     textArray.forEach((line, i) => {
         if(i == 0) {
             const splitLine = line.split(',');
@@ -72,6 +75,13 @@ export async function populateJsonWithSongs(fileUrl: string): Promise<string> {
             });
             return;
         }
+
+        const spotifyId = cleanString(line.split('","')[spotifyIdHeaderIndex]);
+        if (spotifyId in musicObj) {
+            dupeSongs.push(`${musicObj[spotifyId]["Track name"]} - ${musicObj[spotifyId]["Artist name"]}`);
+            musicObj[spotifyId]["Count"] = `${Number(musicObj[spotifyId]["Count"]) + 1}`;
+            return;
+        }
         
         const obj: Record<string, string> = {};
         headers.forEach((header, i) => {
@@ -79,17 +89,17 @@ export async function populateJsonWithSongs(fileUrl: string): Promise<string> {
             obj[header] = cleanString(splitLine[i]);
         });
 
-        const spotifyId = cleanString(line.split(',')[spotifyIdHeaderIndex]);
-        if(!(spotifyId in musicObj)){
-            addedEntriesCount++;
-            musicObj[spotifyId] = obj;
-        }
+        obj["Count"] = "1";
+        addedEntriesCount++;
+        musicObj[spotifyId] = obj;
 
     });
     
     fs.writeFileSync(path, JSON.stringify(musicObj), "utf8");
     const newEntriesCount = Object.keys(musicObj).length;
-    return `JSON has been populated with ${addedEntriesCount} new track entries:\n${currentEntriesCount} -> ${newEntriesCount}`;
+    return `JSON has been populated with ${addedEntriesCount} new track entries:\n${currentEntriesCount} -> ${newEntriesCount}\n${
+        dupeSongs.length > 0 ? `Duplicate tracks below:\n${dupeSongs.join('\n')}` : "No duplicate tracks."
+    }`;
 }
 
 function cleanString(str: string): string {

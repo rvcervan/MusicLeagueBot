@@ -42,9 +42,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         else{
             const reply = await populateJsonWithSongs(csv.url)
-            await interaction.reply(reply);
+            await interaction.reply(reply.slice(0, 1999));
         }
     }
+
+    /* new command idea. pricehistory. looks at hifizero and retrieves price history of specific product*/
+
+    /* new command idea. watchproduct. looks at hifizero and notifies user of any added products, checks hourly?*/
+
 });
 
 client.login(config.token);
