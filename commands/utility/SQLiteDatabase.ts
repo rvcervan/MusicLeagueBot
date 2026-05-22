@@ -1,20 +1,28 @@
-import { existsSync, writeFileSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync } from "fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 type DbType = "headfi" | "musicLeague";
 export class Database{
     database?: DatabaseSync;
-
-    //initialization of db to begin
+    
     initDB(dbType: DbType) {
         if(!this.database) {
-            //check if file exists, if it doesn't create it and then initialize tables, if it does just initialize tables
-            if (!existsSync(`./databases/${dbType}.db`)) {
-                console.log(`${dbType} database file does not exist, creating...`);
-                writeFileSync(`./databases/${dbType}.db`, "");
+            const __dirname = path.dirname(fileURLToPath(import.meta.url));
+            const dbDir = path.join(__dirname, '..', '..', 'databases');
+            const dbPath = path.join(dbDir, `${dbType}.db`);
+
+            if (!existsSync(dbDir)) {
+                mkdirSync(dbDir, { recursive: true });
             }
 
-            this.database = new DatabaseSync('./databases/'+dbType+'.db');
+            if (!existsSync(dbPath)) {
+                console.log(`${dbType} database file does not exist, creating...`);
+                writeFileSync(dbPath, "");
+            }
+
+            this.database = new DatabaseSync(dbPath);
             if(dbType === "headfi") {
                 this.#setupHeadfiDB();
             } else if(dbType === "musicLeague") {
