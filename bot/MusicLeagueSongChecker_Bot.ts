@@ -1,8 +1,8 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import { addWatchTerm, checkForNewlistings, deleteAllWatchTerms, HeadfiListing, listWatchTerms, removeWatchTerm } from "../commands/utility/headfiScraper.ts";
-import { addInitTracksToDB, getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
-import config from "../config.json" with { type: "json" };
+import { getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
 import { Database } from "../commands/utility/SQLiteDatabase.ts";
+import config from "../config.json" with { type: "json" };
 
 const spotifyDB = new Database();
 spotifyDB.initDB("musicLeague");
@@ -11,7 +11,8 @@ const spotifyStuff = new SpotifyStuff();
 const headfiDB = new Database();
 headfiDB.initDB("headfi");
 
-addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
+// As of 12:34 pm on 5/22, I have to wait 10 hours because too many requests
+// addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,
@@ -43,7 +44,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const reply = getTracksFromDB(spotifyDB.getDB(), songname);
             await interaction.editReply({content: replyTrimmer(reply)});
         }
@@ -56,7 +57,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const reply = getTracksByArtistFromDB(spotifyDB.getDB(), artistname);
             await interaction.editReply({content: replyTrimmer(reply)});
         }
@@ -69,7 +70,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             const reply = await populateDBWithSpotifyPlaylistSongs(spotifyDB.getDB(), playlistId, spotifyStuff);
             await interaction.editReply({content: replyTrimmer(reply)});
         }
