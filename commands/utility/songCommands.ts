@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
-import config from "../../config.json" with { type: "json" }
-import { type Initsong, initSongs } from '../../MusicLeagueJSON/initSongs.ts';
+import config from "../../config.json" with { type: "json" };
+import { initSongs } from '../../MusicLeagueJSON/initSongs.ts';
 
 const errorStatuses = Array.from({ length: 100 }, (_, i) => 400 + i);
 
@@ -9,24 +9,8 @@ export class SpotifyStuff {
     //so we can just request a new one every time we need to make a spotify api call and it should be fine.
     accessToken?: string;
 
-    async isAccessTokenValid(): Promise<boolean> {
-        const response = await fetch("https://api.spotify.com/v1/tracks/11dFghVXANMlKmJXsNCbNl", {
-            headers: {
-                "Authorization": `Bearer ${this.accessToken ?? ""}`
-            }
-        });
-        // make array from 400 to 499
-        
-        if (errorStatuses.includes(response.status)) {
-            console.log(response);
-            return false;
-        }
-        return true;
-    }
-
-    async refreshAccessToken() {
-        const isValid = await this.isAccessTokenValid();
-        if (!isValid) {
+    async getOrRefreshAccessToken() {
+        if (!this.accessToken) {
             const response = await fetch("https://accounts.spotify.com/api/token", {
                 method: "POST",
                 headers: {
@@ -37,7 +21,7 @@ export class SpotifyStuff {
 
             if (errorStatuses.includes(response.status)) {
                 const errorText = await response.text().catch(() => response.statusText);
-                console.error("Failed to refresh access token:", response.status, response.statusText, errorText);
+                console.error("Failed to retrieve access token:", response.status, response.statusText, errorText);
                 return;
             }
 
@@ -45,10 +29,34 @@ export class SpotifyStuff {
             this.accessToken = data.access_token;
             console.log("new access token:", this.accessToken);
         }
+        else {
+            // refresh token
+            const response = await fetch("https://accounts.spotify.com/api/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                    grant_type: "refresh_token",
+                    refresh_token: this.accessToken,
+                    client_id: config.spotify_client_id
+                }),
+            });
+
+            if (errorStatuses.includes(response.status)) {
+                const errorText = await response.text().catch(() => response.statusText);
+                console.error("Failed to refresh access token:", response.status, response.statusText, errorText);
+                return;
+            }
+
+            const data = await response.json();
+            this.accessToken = data.refresh_token ?? this.accessToken;
+            console.log("refreshed access token:", this.accessToken);
+        }
     }
 
     async getAccessToken(): Promise<string | undefined> {
-        await this.refreshAccessToken();
+        await this.getOrRefreshAccessToken();
         return this.accessToken;
     }
 }
@@ -162,7 +170,7 @@ async function addTrackToDB(db: DatabaseSync, playlistName: string, trackChunk: 
 
     if (errorStatuses.includes(response.status)) {
         const errorText = await response.text().catch(() => response.statusText);
-        throw new Error(`Spotify API error: ${response.status} ${response.statusText}: ${errorText}`);
+        throw new Error(`Spotify API error: ${response.status} ${response.statusText}: ${errorText}\n\n${spotifyURL}`);
     }
 
     const tracks = await response.json();
@@ -206,9 +214,9 @@ export async function addInitTracksToDB(db: DatabaseSync, spotifyStuff: SpotifyS
     }
 
     for(const [playlistname, trackIds] of Object.entries(initSongChunks)) {
-        await addTrackToDB(db, playlistname, trackIds, spotifyStuff);
-        //wait for 10 seconds
+        console.log("10 seconds delay");
         await new Promise(resolve => setTimeout(resolve, 10000));
+        await addTrackToDB(db, playlistname, trackIds, spotifyStuff);
     }
     console.log("Initialized tracks added to the database.");
 }
