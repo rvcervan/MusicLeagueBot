@@ -1,6 +1,17 @@
-import { Client, Events, GatewayIntentBits, Message, MessageFlags } from "discord.js";
-import config from "../config.json" with { type: "json" }
-import { populateJsonWithSongs, trackChecker } from "../commands/utility/songCommands.ts";
+import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { addWatchTerm, checkForNewlistings, deleteAllWatchTerms, HeadfiListing, listWatchTerms, removeWatchTerm } from "../commands/utility/headfiScraper.ts";
+import { addInitTracksToDB, getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
+import config from "../config.json" with { type: "json" };
+import { Database } from "../commands/utility/SQLiteDatabase.ts";
+
+const spotifyDB = new Database();
+spotifyDB.initDB("musicLeague");
+const spotifyStuff = new SpotifyStuff();
+
+const headfiDB = new Database();
+headfiDB.initDB("headfi");
+
+addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,
@@ -13,43 +24,101 @@ client.on(Events.ClientReady, readyClient => {
     console.log(`Logged in as ${readyClient.user.tag}!`)
 });
 
-client.on(Events.InteractionCreate, async (interaction) => {
+function replyTrimmer(message: string): string {
+    if(message.length > 2000) {
+        return message.slice(0, 1997) + "...";
+    }
+    return message;
+}
+
+const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    
-    console.log(`${interaction.user.displayName} used ${interaction.commandName}!`)
+
+    console.log(`${interaction.user.displayName} used ${interaction.commandName}!`);
 
     if (interaction.commandName === "songcheck") {    
         const songname = interaction.options.getString("songname");
-        await interaction.reply({content: trackChecker(songname, "Track name"), flags: MessageFlags.Ephemeral});
+        if(!songname) {
+            const reply = "No song name submitted."
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+        else {
+            await interaction.deferReply({ ephemeral: true });
+            const reply = getTracksFromDB(spotifyDB.getDB(), songname);
+            await interaction.editReply({content: replyTrimmer(reply)});
+        }
     }
 
     if (interaction.commandName === "artistcheck") {    
         const artistname = interaction.options.getString("artistname");
-        await interaction.reply({content: trackChecker(artistname, "Artist name"), flags: MessageFlags.Ephemeral});
+        if(!artistname) {
+            const reply = "No artist name submitted."
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+        else {
+            await interaction.deferReply({ ephemeral: true });
+            const reply = getTracksByArtistFromDB(spotifyDB.getDB(), artistname);
+            await interaction.editReply({content: replyTrimmer(reply)});
+        }
     }
     
-    if (interaction.commandName === "uploadcsv") {    
-        const csv = interaction.options.getAttachment("csv");
-        if(!csv) {
-            const reply = "No csv file submitted."
-            await interaction.reply({content: reply, flags: MessageFlags.Ephemeral})
-            console.error("No csv file submitted", csv);
+    if (interaction.commandName === "addplaylist") {
+        const playlistId = interaction.options.getString("playlistid");
+        if(!playlistId) {
+            const reply = "No playlist ID submitted."
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
-        else if(csv.name.split('.').at(-1) != "csv") {
-            const reply = "File needs to be a csv."
-            await interaction.reply({content: reply, flags: MessageFlags.Ephemeral})
-            console.error("File needs to be a csv", csv);
-        }
-        else{
-            const reply = await populateJsonWithSongs(csv.url)
-            await interaction.reply(reply.slice(0, 1999));
+        else {
+            await interaction.deferReply({ ephemeral: true });
+            const reply = await populateDBWithSpotifyPlaylistSongs(spotifyDB.getDB(), playlistId, spotifyStuff);
+            await interaction.editReply({content: replyTrimmer(reply)});
         }
     }
 
-    /* new command idea. pricehistory. looks at hifizero and retrieves price history of specific product*/
+    if (interaction.commandName === "addwatchterm") {
+        const watchTerm = interaction.options.getString("watchterm");
+        if(!watchTerm) {
+            const reply = "No watch term submitted."
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+        else {
+            addWatchTerm(interaction.user.id, watchTerm, headfiDB.getDB());
+            const reply = `Added watch term: ${watchTerm}`;
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+    }
 
-    /* new command idea. watchproduct. looks at hifizero and notifies user of any added products, checks hourly?*/
+    if (interaction.commandName === "listwatchterms") {
+        const watchTerms = listWatchTerms(interaction.user.id, headfiDB.getDB());
+        await interaction.reply({content: replyTrimmer(watchTerms), flags: MessageFlags.Ephemeral});
+    }
 
+    if (interaction.commandName === "removewatchterm") {
+        const watchTerm = interaction.options.getString("watchterm");
+        if(!watchTerm) {
+            const reply = "No watch term submitted."
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+        else {
+            const reply = removeWatchTerm(interaction.user.id, watchTerm, headfiDB.getDB());
+            await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+        }
+    }
+
+    if (interaction.commandName === "removeallwatchterms") {
+        const reply = deleteAllWatchTerms(interaction.user.id, headfiDB.getDB());
+        await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+    }
 });
+
+
+//addNewListings will be running here
+setInterval(() => {
+    checkForNewlistings(headfiDB.getDB());
+}, 5000)
+
+export function notifyUserOfNewListing(newListing: HeadfiListing, discordUserId: string) {
+    client.users.send(discordUserId, `A new listing that matches your watch terms has been added:\n ${newListing.listingUrl}`);
+}
 
 client.login(config.token);

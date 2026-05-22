@@ -39,16 +39,50 @@ const commands = [
     ],
   },
   {
-    name: "uploadcsv",
-    description: "Populate new submitted songs to search against",
+    name: "addplaylist",
+    description: "Populate new submitted songs to search against using a spotify playlist id",
     options: [
         {
-          type: ATTACHMENT,
-          name: "csv",
-          description: ".csv file from MusicLeague",
+          type: STRING,
+          name: "playlistid",
+          description: "The ID of the Spotify playlist to populate",
           required: true,
         },
     ],
+  },
+  {
+    name: "addwatchterm",
+    description: "Add new watch term for user. A DM is sent when a new listing is added that matches the term.",
+    options: [
+        {
+          type: STRING,
+          name: "watchterm",
+          description: "The term to watch for",
+          required: true,
+        },
+    ],
+  },
+  {
+    name: "listwatchterms",
+    description: "List all watch terms for the current user.",
+    options: [],
+  },
+  {
+    name: "removewatchterm",
+    description: "Remove a watch term for the current user.",
+    options: [
+        {
+          type: STRING,
+          name: "watchterm",
+          description: "The term to watch for",
+          required: true,
+        },
+    ],
+  },
+  {
+    name: "removeallwatchterms",
+    description: "Remove all watch terms for the current user.",
+    options: [],
   },
 ];
 
