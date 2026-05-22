@@ -76,7 +76,7 @@ function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean
 }
 
 //The reason we scrape listings is because we want cross reference with new listings posted on the site.
-//Do we need this?
+//Is this needed?
 async function scrapeHeadfiListings(db: DatabaseSync) {
     const numOfPagesToIterate = 10;
     for(const i of Array.from(Array(numOfPagesToIterate).keys()).map(i => i+1)) {
@@ -184,6 +184,11 @@ export function deleteAllWatchTerms(discordUserId: string, database: DatabaseSyn
 
 export function checkIfListingMatchesWatchTerms(listing: HeadfiListing, db: DatabaseSync): string[] | undefined {
     //check if listing name contains any watch terms for any user, if it does return array of discord user ids that are watching thoes terms, if not return undefined
+    //if listing currency is not in USD return undefined
+    if (!listing.currencySymbol.includes("USD")) {
+        return undefined;
+    }
+    
     const usersWatching = db.prepare("SELECT discordUserId, watchTerms FROM watchList").all();
     if (!usersWatching || usersWatching.length === 0) return;
 
