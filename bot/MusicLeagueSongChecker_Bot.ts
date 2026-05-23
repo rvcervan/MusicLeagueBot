@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import { addWatchTerm, checkForNewlistings, deleteAllWatchTerms, HeadfiListing, listWatchTerms, removeWatchTerm } from "../commands/utility/headfiScraper.ts";
-import { getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
+import { addInitTracksToDB, getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
 import { Database } from "../commands/utility/SQLiteDatabase.ts";
 import config from "../config.json" with { type: "json" };
 
@@ -12,7 +12,7 @@ const headfiDB = new Database();
 headfiDB.initDB("headfi");
 
 // As of 12:34 pm on 5/22, I have to wait 10 hours because too many requests
-// addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
+addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
 
 const client = new Client({ intents: [
     GatewayIntentBits.Guilds,

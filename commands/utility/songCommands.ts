@@ -214,8 +214,8 @@ export async function addInitTracksToDB(db: DatabaseSync, spotifyStuff: SpotifyS
     }
 
     for(const [playlistname, trackIds] of Object.entries(initSongChunks)) {
-        console.log("10 seconds delay");
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log("1 second delay");
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await addTrackToDB(db, playlistname, trackIds, spotifyStuff);
     }
     console.log("Initialized tracks added to the database.");

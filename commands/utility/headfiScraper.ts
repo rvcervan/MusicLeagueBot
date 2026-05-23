@@ -185,10 +185,10 @@ export function deleteAllWatchTerms(discordUserId: string, database: DatabaseSyn
 export function checkIfListingMatchesWatchTerms(listing: HeadfiListing, db: DatabaseSync): string[] | undefined {
     //check if listing name contains any watch terms for any user, if it does return array of discord user ids that are watching thoes terms, if not return undefined
     //if listing currency is not in USD return undefined
-    if (!listing.currencySymbol.includes("USD")) {
+    if (!listing.currencySymbol.includes("USD") || !listing.Type.includes("Sale")) {
         return undefined;
     }
-    
+
     const usersWatching = db.prepare("SELECT discordUserId, watchTerms FROM watchList").all();
     if (!usersWatching || usersWatching.length === 0) return;
 
