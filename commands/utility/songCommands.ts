@@ -160,6 +160,7 @@ async function addTrackToDB(db: DatabaseSync, playlistName: string, trackChunk: 
             const existingCount = Number(countRow?.count ?? 0);
             const newPlaylistIds = existingPlaylistIds?.toString().includes("initTracks") ? existingPlaylistIds : existingPlaylistIds + "␟" + "initTracks";
             const newPlaylistNames = existingPlaylistNames?.toString().includes(playlistName) ? existingPlaylistNames : existingPlaylistNames + "␟" + playlistName;
+            console.log(existingCount+1);
             db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = ? WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, existingCount + 1, track.id);
         } else {
             db.prepare(`
