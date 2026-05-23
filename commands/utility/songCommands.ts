@@ -103,12 +103,11 @@ export async function populateDBWithSpotifyPlaylistSongs(db: DatabaseSync, playl
 }
 
 export function getTracksFromDB(db: DatabaseSync, trackName: string) {
-    const rows = db.prepare("SELECT trackName, artistName, albumName, playlistName FROM musicLeagueSubmittedSongs WHERE trackName LIKE ?").all(`%${trackName}%`);
+    const rows = db.prepare("SELECT trackName, artistName, albumName, playlistName, count FROM musicLeagueSubmittedSongs WHERE trackName LIKE ?").all(`%${trackName}%`);
     if (rows.length === 0) {
         return "No tracks found with that name.";
     }
     let reply = `Tracks with name similar to "${trackName}":\n`;
-    console.log(rows);
     rows.forEach((row: any) => {
         reply += `Track name: ${row.trackName}\nArtist name: ${row.artistName}\nAlbum name: ${row.albumName}\nPlaylist name(s): ${row.playlistName.split("␟").join(", ")}\nTimes submitted: ${row.count}\n\n`;
     });
@@ -116,7 +115,7 @@ export function getTracksFromDB(db: DatabaseSync, trackName: string) {
 }
 
 export function getTracksByArtistFromDB(db: DatabaseSync, artistName: string) {
-    const rows = db.prepare("SELECT trackName, artistName, albumName, playlistName FROM musicLeagueSubmittedSongs WHERE artistName LIKE ?").all(`%${artistName}%`);
+    const rows = db.prepare("SELECT trackName, artistName, albumName, playlistName, count FROM musicLeagueSubmittedSongs WHERE artistName LIKE ?").all(`%${artistName}%`);
     if (rows.length === 0) {
         return "No tracks found with that artist name.";
     }
@@ -161,7 +160,6 @@ async function addTrackToDB(db: DatabaseSync, playlistName: string, trackChunk: 
             const existingCount = Number(countRow?.count ?? 0);
             const newPlaylistIds = existingPlaylistIds?.toString().includes("initTracks") ? existingPlaylistIds : existingPlaylistIds + "␟" + "initTracks";
             const newPlaylistNames = existingPlaylistNames?.toString().includes(playlistName) ? existingPlaylistNames : existingPlaylistNames + "␟" + playlistName;
-            console.log(existingCount+1);
             db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = ? WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, existingCount + 1, track.id);
         } else {
             db.prepare(`
