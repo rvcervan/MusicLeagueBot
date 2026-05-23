@@ -108,6 +108,7 @@ export function getTracksFromDB(db: DatabaseSync, trackName: string) {
         return "No tracks found with that name.";
     }
     let reply = `Tracks with name similar to "${trackName}":\n`;
+    console.log(rows);
     rows.forEach((row: any) => {
         reply += `Track name: ${row.trackName}\nArtist name: ${row.artistName}\nAlbum name: ${row.albumName}\nPlaylist name(s): ${row.playlistName.split("␟").join(", ")}\nTimes submitted: ${row.count}\n\n`;
     });
