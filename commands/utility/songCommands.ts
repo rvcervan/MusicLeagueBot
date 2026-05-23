@@ -29,30 +29,6 @@ export class SpotifyStuff {
             this.accessToken = data.access_token;
             console.log("new access token:", this.accessToken);
         }
-        else {
-            // refresh token
-            const response = await fetch("https://accounts.spotify.com/api/token", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams({
-                    grant_type: "refresh_token",
-                    refresh_token: this.accessToken,
-                    client_id: config.spotify_client_id
-                }),
-            });
-
-            if (errorStatuses.includes(response.status)) {
-                const errorText = await response.text().catch(() => response.statusText);
-                console.error("Failed to refresh access token:", response.status, response.statusText, errorText);
-                return;
-            }
-
-            const data = await response.json();
-            this.accessToken = data.refresh_token ?? this.accessToken;
-            console.log("refreshed access token:", this.accessToken);
-        }
     }
 
     async getAccessToken(): Promise<string | undefined> {
