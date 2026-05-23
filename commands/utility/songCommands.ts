@@ -164,8 +164,8 @@ async function addTrackToDB(db: DatabaseSync, playlistName: string, trackChunk: 
         } else {
             db.prepare(`
                 INSERT INTO musicLeagueSubmittedSongs (spotifyId, trackName, artistName, albumName, playlistName, playlistIds, type, isrc, count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-            `).run(track.id, track.name, track.artists[0].name, track.album.name, playlistName, "initTracks", "track", track.external_ids.isrc);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(track.id, track.name, track.artists[0].name, track.album.name, playlistName, "initTracks", "track", track.external_ids.isrc, 1);
         }
     }
 }
