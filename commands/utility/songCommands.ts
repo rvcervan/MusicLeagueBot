@@ -156,9 +156,11 @@ async function addTrackToDB(db: DatabaseSync, playlistName: string, trackChunk: 
         if (db.prepare("SELECT spotifyId FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(track.id)) {
             const existingPlaylistIds = db.prepare("SELECT playlistIds FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(track.id)?.playlistIds;
             const existingPlaylistNames = db.prepare("SELECT playlistName FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(track.id)?.playlistName;
+            const countRow = db.prepare("SELECT count FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(track.id);
+            const existingCount = Number(countRow?.count ?? 0);
             const newPlaylistIds = existingPlaylistIds?.toString().includes("initTracks") ? existingPlaylistIds : existingPlaylistIds + "␟" + "initTracks";
             const newPlaylistNames = existingPlaylistNames?.toString().includes(playlistName) ? existingPlaylistNames : existingPlaylistNames + "␟" + playlistName;
-            db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = count + 1 WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, track.id);
+            db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = ? WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, existingCount + 1, track.id);
         } else {
             db.prepare(`
                 INSERT INTO musicLeagueSubmittedSongs (spotifyId, trackName, artistName, albumName, playlistName, playlistIds, type, isrc, count)
