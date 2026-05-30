@@ -77,37 +77,55 @@ function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean
 
 //The reason we scrape listings is because we want cross reference with new listings posted on the site.
 //Is this needed?
-async function scrapeHeadfiListings(db: DatabaseSync) {
-    const numOfPagesToIterate = 10;
-    for(const i of Array.from(Array(numOfPagesToIterate).keys()).map(i => i+1)) {
-        const url = headfiClassifiedUrlBase+pageBase+i;
+// async function scrapeHeadfiListings(db: DatabaseSync) {
+//     const numOfPagesToIterate = 10;
+//     for(const i of Array.from(Array(numOfPagesToIterate).keys()).map(i => i+1)) {
+//         const url = headfiClassifiedUrlBase+pageBase+i;
         
-        const response =  await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Response status: ${response.status}`)
-        }
+//         const response =  await fetch(url);
+//         if (!response.ok) {
+//             throw new Error(`Response status: ${response.status}`)
+//         }
     
-        const htmlText = await response.text();
-        const dom = new JSDOM(htmlText);
+//         const htmlText = await response.text();
+//         const dom = new JSDOM(htmlText);
     
-        const listings = dom.window.document.getElementsByClassName(listingClassName);
+//         const listings = dom.window.document.getElementsByClassName(listingClassName);
     
-        for(const l of listings) {
-            insertListing(l, db);
-        }
-    }
-}
+//         for(const l of listings) {
+//             insertListing(l, db);
+//         }
+//     }
+// }
 
 // Refreshes the new listings page and adds new listings to the listings table. Refresh on a 2min(?) timer
 export async function checkForNewlistings(database: DatabaseSync) {
     const sql = database.createTagStore();
 
-    const response =  await fetch(headfiClassifiedUrlBase);
-    if (!response.ok) {
-        throw new Error(`Response status: ${response.status}`)
+    let response;
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            response = await fetch(headfiClassifiedUrlBase);
+            if (!response.ok) {
+                throw new Error(`Response status: ${response.status}`);
+            }
+            break; // Success, exit retry loop
+        } catch (error) {
+            if (attempt < maxRetries - 1) {
+                const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
+                console.warn(`Fetch attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error(`Fetch failed after ${maxRetries} attempts:`, error);
+                throw error;
+            }
+        }
     }
 
-    const htmlText = await response.text();
+    const htmlText = await response!.text();
     const dom = new JSDOM(htmlText);
 
     const listings = dom.window.document.getElementsByClassName(listingClassName);
