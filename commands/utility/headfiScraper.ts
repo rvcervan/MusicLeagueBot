@@ -103,7 +103,7 @@ export async function checkForNewlistings(database: DatabaseSync) {
     const sql = database.createTagStore();
 
     let response;
-    const maxRetries = 3;
+    const maxRetries = 10;
     const baseDelay = 1000; // 1 second
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
