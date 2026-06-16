@@ -1,23 +1,24 @@
 import { JSDOM } from "jsdom";
 import { DatabaseSync } from 'node:sqlite';
 import { notifyUserOfNewListing } from '../../bot/MusicLeagueSongChecker_Bot.ts';
+import { checkIfListingMatchesWatchTerms, fetchWithRetry } from "./discordListingInteractions.ts";
 
-const US = '␟';
 const headfiClassifiedUrlBase = "https://www.head-fi.org/classifieds/"; 
 const pageBase = "page-"; //probably get the first 10 pages of items. url looks like this "https://www.head-fi.org/classifieds/page-1"
 const listingClassName = "hfcUserListing";
 const titleClassName = "hfcListingTitle";
 const priceClassName = "hfcPrice";
 const listingDateClassName = "hfcListingDate";
+const listingTitleClassName = "p-title-value head-fi_generic_page_title";
 
-export class HeadfiListing {
+export class HeadfiListing { //Not really needed tbh
     Id: number; // Listing Id
     Name: string; // Listing Name
     Price: string; // Listing Price
     currencySymbol: string; // Listing Price's currency symbol
     Type: string; // Listing type (For Sale, Want To Buy, etc)
     Date: string; // Date Listed
-    Status?: string; // Listing Status (Closed, Sold)
+    Status?: string; // Listing Status (Closed, Sold, Traded)
 
     constructor(listingId: number, listingName: string, listingPrice: string, currencySymbol: string, listingType: string, listingDate: string, listingStatus?: string) {
         this.Id = listingId;
@@ -38,8 +39,35 @@ export class HeadfiListing {
     }
 }
 
+export function removeEndedHeadfiListings(db: DatabaseSync): string {
+    // Remove all listings that have a listing status of "Closed", "Sold", or "Traded"
+    const totalItems: number = Number(db.prepare("SELECT COUNT(*) AS count FROM classifieds").get()?.count ?? 0);
+    const deleteEnded = db.prepare("DELETE FROM classifieds WHERE listingStatus IN ('Closed', 'Sold', 'Traded')");
+    const result: number = Number(deleteEnded.run().changes);
+    return `Removed ${result} ended listings from Head-Fi database. Total items before cleanup: ${totalItems}`;
+}
 
-function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean): HeadfiListing | undefined {
+// Run this after every 100th listing added to the db.
+export async function updateHeadfiListingStatuses(db: DatabaseSync) {
+    // Update listing statuses by iterating through all listing ids in db, fetching their page, and updating the status in the database if it has changed.
+    const listingIds = db.prepare("SELECT listingId FROM classifieds").all() as { listingId: number }[]; // Supposedly this is wrong
+    for (const { listingId } of listingIds) {
+        if (!listingId) continue;
+        const response =  await fetchWithRetry(headfiClassifiedUrlBase+listingId);
+        
+        const htmlText = await response.text()
+        const dom = new JSDOM(htmlText);
+        const listing = dom.window.document.getElementsByClassName(listingTitleClassName);
+        const listingStatus = listing.item(0)?.textContent.replaceAll('\t', '').replaceAll('\n', '').split(":")[0].trim();
+        if (listingStatus?.includes("Closed") || listingStatus?.includes("Sold") || listingStatus?.includes("Traded")) {
+            console.log(`Updating listing status for ${listingId} to ${listingStatus}`);
+            db.prepare("UPDATE classifieds SET listingStatus = ? WHERE listingId = ?").run(listingStatus, listingId);
+        }
+        await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+}
+
+function insertHeadfiListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean): HeadfiListing | undefined {
     const listingId: number = Number(l.getAttributeNode("href")?.textContent.replaceAll('/', '').split(".").at(-1));
     const listingName: string | undefined =  l.getElementsByClassName(titleClassName).item(0)?.textContent.trim();
     const listingPrice: string | undefined = l.getElementsByClassName(priceClassName).item(0)?.textContent.replaceAll("\n", "").trim().split(' ').map(o => o.trim()).at(-1)?.split(' ').at(0);
@@ -50,7 +78,7 @@ function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean
 
     if(!listingId || !listingName || !listingPrice || !currency || !listingType || !listedDate) {
         const stuff = [listingId, listingName, listingPrice, currency, listingType, listedDate];
-        throw Error(`One or more of the following fields are null when it shouldn't be: ${
+        throw new Error(`One or more of the following fields are null when it shouldn't be: ${
             stuff.map(s => `${Object.keys({s})[0]}: ${s}`).join(", ")
         }`);
     }
@@ -64,7 +92,6 @@ function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean
     `);
 
     const result = insertListing.run(listingId, listingName, listingPrice, currency, listingType, listingStatus ?? null, listedDate);
-    console.log(`Attempted to insert listing ${listingName}. Changes: ${result.changes}`);
     if (result.changes === 0) {
         console.log(`Listing with id ${listingId} already exists in the database.`);
         return;
@@ -75,59 +102,16 @@ function insertListing(l: Element, db: DatabaseSync, returnListinginfo?: boolean
     return new HeadfiListing(listingId, listingName, listingPrice, currency, listingType, listedDate, listingStatus);
 }
 
-//The reason we scrape listings is because we want cross reference with new listings posted on the site.
-//Is this needed?
-// async function scrapeHeadfiListings(db: DatabaseSync) {
-//     const numOfPagesToIterate = 10;
-//     for(const i of Array.from(Array(numOfPagesToIterate).keys()).map(i => i+1)) {
-//         const url = headfiClassifiedUrlBase+pageBase+i;
-        
-//         const response =  await fetch(url);
-//         if (!response.ok) {
-//             throw new Error(`Response status: ${response.status}`)
-//         }
-    
-//         const htmlText = await response.text();
-//         const dom = new JSDOM(htmlText);
-    
-//         const listings = dom.window.document.getElementsByClassName(listingClassName);
-    
-//         for(const l of listings) {
-//             insertListing(l, db);
-//         }
-//     }
-// }
-
 // Refreshes the new listings page and adds new listings to the listings table. Refresh on a 2min(?) timer
-export async function checkForNewlistings(database: DatabaseSync) {
+export async function checkForNewHeadfiListings(database: DatabaseSync): Promise<number> {
     const sql = database.createTagStore();
 
-    let response;
-    const maxRetries = 10;
-    const baseDelay = 1000; // 1 second
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            response = await fetch(headfiClassifiedUrlBase);
-            if (!response.ok) {
-                throw new Error(`Response status: ${response.status}`);
-            }
-            break; // Success, exit retry loop
-        } catch (error) {
-            if (attempt < maxRetries - 1) {
-                const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
-                console.warn(`Fetch attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                console.error(`Fetch failed after ${maxRetries} attempts:`, error);
-                throw error;
-            }
-        }
-    }
+    const response = await fetchWithRetry(headfiClassifiedUrlBase);
 
     const htmlText = await response!.text();
     const dom = new JSDOM(htmlText);
 
+    let listingsAddedCount: number = 0;
     const listings = dom.window.document.getElementsByClassName(listingClassName);
     for (const l of listings) {
         const listingId: number = Number(l.getAttributeNode("href")?.textContent.replaceAll('/', '').split(".").at(-1));
@@ -135,94 +119,17 @@ export async function checkForNewlistings(database: DatabaseSync) {
 
         // If listing does not exist in database, add it and notify user if it matches any of their watch terms
         if (!listing) {
-            const newListingInfo = insertListing(l, database, true);
-            const matchedUserIds = checkIfListingMatchesWatchTerms(newListingInfo!, database);
-            matchedUserIds?.forEach(id => {
-                notifyUserOfNewListing(newListingInfo!, id);
-            });
-        }
-    }
-}
-
-// Adds discord user to table "watchList" if not already added with the watch term they are watching for. If already added, append the term to the watchTerms string using seperator
-export function addWatchTerm(discordUserId: string, watchTerm: string, database: DatabaseSync) {
-
-    //check if user already exists in table, if not add them with watch term, if they do exist append watch term to existing watch terms
-    const userExists = database.prepare("SELECT * FROM watchList WHERE discordUserId = ?").get(discordUserId);
-    if (!userExists) {
-        database.prepare("INSERT INTO watchList (discordUserId, watchTerms) VALUES (?, ?)").run(discordUserId, watchTerm);
-    } else {
-        const existingWatchTerms = userExists.watchTerms;
-        if (!existingWatchTerms) return "Existing user has null watch terms, this should not be possible";
-        const updatedWatchTerms = existingWatchTerms + US + watchTerm;
-        database.prepare("UPDATE watchList SET watchTerms = ? WHERE discordUserId = ?").run(updatedWatchTerms, discordUserId);
-    }
-}
-
-// Lists watch terms discord users have
-export function listWatchTerms(discordUserId: string, database: DatabaseSync): string {
-    //check if user exists in table, if not return empty array, if they do return array of watch terms by splitting watchTerms string using seperator
-    const userExists = database.prepare("SELECT * FROM watchList WHERE discordUserId = ?").get(discordUserId);
-    if (!userExists) {
-        return "User does not have any watch terms.";
-    }
-    const existingWatchTerms = userExists.watchTerms;
-    if (!existingWatchTerms || typeof existingWatchTerms !== "string") return "Existing user has null or non-string watch terms, this should not be possible";
-    return existingWatchTerms.split(US).join(", ");
-}
-
-// Deletes a specified watch term, maybe this can be used after listWatchTerms()
-export function removeWatchTerm(discorduserId: string, watchTerm: string, database: DatabaseSync) {
-    //check if user exists in table, if not return "User does not have any watch terms.", if they do check if they have the watch term they want to remove, if they do remove it from their watch terms and update table, if they don't return "User is not watching that term".
-    const userExists = database.prepare("SELECT * FROM watchList WHERE discordUserId = ?").get(discorduserId);
-    if (!userExists) {
-        return "User does not have any watch terms.";
-    }
-    const existingWatchTerms = userExists.watchTerms;
-    if (!existingWatchTerms || typeof existingWatchTerms !== "string") return "Existing user has null or non-string watch terms, this should not be possible";
-    const watchTermsArray = existingWatchTerms.split(US);
-    if (!watchTermsArray.includes(watchTerm)) {
-        return "User is not watching that term.";
-    }
-    const updatedWatchTerms = existingWatchTerms.split(US).filter((t: string) => t !== watchTerm).join(US);
-    database.prepare("UPDATE watchList SET watchTerms = ? WHERE discordUserId = ?").run(updatedWatchTerms, discorduserId);
-    return "Watch term removed successfully.";
-}
-
-// Deletes all watch terms by removing discord user from table
-export function deleteAllWatchTerms(discordUserId: string, database: DatabaseSync) {
-    //remove user from table
-    const userExists = database.prepare("SELECT * FROM watchList WHERE discordUserId = ?").get(discordUserId);
-    if (!userExists) {
-        return "User does not have any watch terms.";
-    }
-    database.prepare("DELETE FROM watchList WHERE discordUserId = ?").run(discordUserId);
-    return "All watch terms deleted successfully.";
-}
-
-export function checkIfListingMatchesWatchTerms(listing: HeadfiListing, db: DatabaseSync): string[] | undefined {
-    //check if listing name contains any watch terms for any user, if it does return array of discord user ids that are watching thoes terms, if not return undefined
-    //if listing currency is not in USD return undefined
-    if (!listing.currencySymbol.includes("USD") || !listing.Type.includes("Sale")) {
-        return undefined;
-    }
-
-    const usersWatching = db.prepare("SELECT discordUserId, watchTerms FROM watchList").all();
-    if (!usersWatching || usersWatching.length === 0) return;
-
-    const matches: string[] = [];
-    const listingNameLower = listing.Name.toLowerCase();
-
-    for (const u of usersWatching) {
-        if (!u.watchTerms || typeof u.watchTerms !== 'string') continue;
-        const terms = u.watchTerms.split(US).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
-        for (const term of terms) {
-            if (listingNameLower.includes(term.toLowerCase())) {
-                matches.push(String(u.discordUserId));
-                break;
+            const newListingInfo = insertHeadfiListing(l, database, true);
+            listingsAddedCount++;
+            //check if listing name contains any watch terms for any user, if it does return array of discord user ids that are watching thoes terms, if not return undefined
+            //if listing currency is not in USD return undefined
+            if (newListingInfo?.currencySymbol.includes("USD") && newListingInfo?.Type.includes("Sale")) {
+                const matchedUserIds = checkIfListingMatchesWatchTerms(newListingInfo!.Name, database);
+                matchedUserIds?.forEach(id => {
+                    notifyUserOfNewListing(newListingInfo!.listingUrl, id);
+                });
             }
         }
     }
-
-    return matches.length ? matches : undefined;
+    return listingsAddedCount;
 }

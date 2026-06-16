@@ -84,6 +84,11 @@ const commands = [
     description: "Remove all watch terms for the current user.",
     options: [],
   },
+  {
+    name: "getlog",
+    description: "Sends log file (For debug purposes).",
+    options: [],
+  },
 ];
 
 const rest = new REST({ version: '10' }).setToken(config.token);

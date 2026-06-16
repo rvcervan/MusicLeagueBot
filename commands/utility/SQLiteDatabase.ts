@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-type DbType = "headfi" | "musicLeague";
+type DbType = "audioListings" | "musicLeague";
 export class Database{
     database?: DatabaseSync;
     
@@ -23,8 +23,8 @@ export class Database{
             }
 
             this.database = new DatabaseSync(dbPath);
-            if(dbType === "headfi") {
-                this.#setupHeadfiDB();
+            if(dbType === "audioListings") {
+                this.#setupAudioListingsDB();
             } else if(dbType === "musicLeague") {
                 this.#setupMusicLeagueDB();
             }
@@ -46,7 +46,7 @@ export class Database{
         return this.database;
     }
 
-    #setupHeadfiDB() {
+    #setupAudioListingsDB() {
         const database = this.#useDBRequired();
         
         /**
@@ -67,6 +67,23 @@ export class Database{
                 listingType TEXT NOT NULL,
                 listingStatus TEXT,
                 listingDate TEXT NOT NULL
+            ) STRICT
+        `);
+
+        /**
+         * id: data-cfid of the listing item on USAM
+         * name: name of the item listing on USAM
+         * listingUrl: url link to the listing on USAM
+         * listingType: For Sale, Wanted, etc.
+         * listingStatus?: Closed, Sold (if null listing assumed to be open)
+         */
+        database.exec(`
+            CREATE TABLE IF NOT EXISTS usamListings(
+                listingId INTEGER PRIMARY KEY,
+                listingName TEXT NOT NULL,
+                listingUrl TEXT NOT NULL,
+                listingType TEXT NOT NULL,
+                listingStatus TEXT
             ) STRICT
         `);
         

@@ -1,17 +1,18 @@
-import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
-import { addWatchTerm, checkForNewlistings, deleteAllWatchTerms, HeadfiListing, listWatchTerms, removeWatchTerm } from "../commands/utility/headfiScraper.ts";
+import { AttachmentBuilder, Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { checkForNewHeadfiListings, HeadfiListing, removeEndedHeadfiListings, updateHeadfiListingStatuses } from "../commands/utility/headfiScraper.ts";
 import { addInitTracksToDB, getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
 import { Database } from "../commands/utility/SQLiteDatabase.ts";
 import config from "../config.json" with { type: "json" };
+import { addWatchTerm, listWatchTerms, removeWatchTerm, deleteAllWatchTerms } from "../commands/utility/discordListingInteractions.ts";
+import { checkForNewUSAMListings, removeEndedUSAMListings, updateUSAMListingStatuses } from "../commands/utility/usamScraper.ts";
 
 const spotifyDB = new Database();
 spotifyDB.initDB("musicLeague");
 const spotifyStuff = new SpotifyStuff();
 
-const headfiDB = new Database();
-headfiDB.initDB("headfi");
+const audioListingsDB = new Database(); //TODO: change db file name to audioListings.db to reflect the type change
+audioListingsDB.initDB("audioListings");
 
-// As of 12:34 pm on 5/22, I have to wait 10 hours because too many requests
 addInitTracksToDB(spotifyDB.getDB(), spotifyStuff);
 
 const client = new Client({ intents: [
@@ -83,14 +84,14 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            addWatchTerm(interaction.user.id, watchTerm, headfiDB.getDB());
+            addWatchTerm(interaction.user.id, watchTerm, audioListingsDB.getDB());
             const reply = `Added watch term: ${watchTerm}`;
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
     }
 
     if (interaction.commandName === "listwatchterms") {
-        const watchTerms = listWatchTerms(interaction.user.id, headfiDB.getDB());
+        const watchTerms = listWatchTerms(interaction.user.id, audioListingsDB.getDB());
         await interaction.reply({content: replyTrimmer(watchTerms), flags: MessageFlags.Ephemeral});
     }
 
@@ -101,25 +102,53 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            const reply = removeWatchTerm(interaction.user.id, watchTerm, headfiDB.getDB());
+            const reply = removeWatchTerm(interaction.user.id, watchTerm, audioListingsDB.getDB());
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
     }
 
     if (interaction.commandName === "removeallwatchterms") {
-        const reply = deleteAllWatchTerms(interaction.user.id, headfiDB.getDB());
+        const reply = deleteAllWatchTerms(interaction.user.id, audioListingsDB.getDB());
         await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
+    }
+
+    console.log(interaction.user.id, config.discord_admin_user_id)
+    if (interaction.commandName === "getlog" && interaction.user.id === config.discord_admin_user_id) {
+        await interaction.reply({files: ['../databases/audioListings.db']})
     }
 });
 
-
 //addNewListings will be running here
-setInterval(() => {
-    checkForNewlistings(headfiDB.getDB());
+let headfiListingsAddedSinceLastCheck = 0;
+let usamListingsAddedSinceLastCheck = 0;
+setInterval(async () => {
+    try {
+        const headfiCount: number = await checkForNewHeadfiListings(audioListingsDB.getDB());
+        const usamCount: number = await checkForNewUSAMListings(audioListingsDB.getDB());
+        headfiListingsAddedSinceLastCheck += headfiCount;
+        usamListingsAddedSinceLastCheck += usamCount;
+        // audiogonListingsAddedSinceLastCheck += audiogonCount;
+        if (headfiListingsAddedSinceLastCheck >= 100) {
+            headfiListingsAddedSinceLastCheck = 0;
+            await updateHeadfiListingStatuses(audioListingsDB.getDB());
+            const removedMessage = removeEndedHeadfiListings(audioListingsDB.getDB());
+            client.users.send(config.discord_admin_user_id, removedMessage);
+        }
+        if (usamListingsAddedSinceLastCheck >= 100) {
+            usamListingsAddedSinceLastCheck = 0;
+            await updateUSAMListingStatuses(audioListingsDB.getDB());
+            const removedMessage = removeEndedUSAMListings(audioListingsDB.getDB());
+            client.users.send(config.discord_admin_user_id, removedMessage);
+        }
+    }
+    catch (error) {
+        console.error("Error occurred while checking for new listings:", error);
+        client.users.send(config.discord_admin_user_id, `Error occurred while checking for new listings: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }, 5000)
 
-export function notifyUserOfNewListing(newListing: HeadfiListing, discordUserId: string) {
-    client.users.send(discordUserId, `A new listing that matches your watch terms has been added:\n ${newListing.listingUrl}`);
+export function notifyUserOfNewListing(url: string, discordUserId: string) {
+    client.users.send(discordUserId, `A new listing that matches your watch terms has been added:\n ${url}`);
 }
 
 client.login(config.token);
