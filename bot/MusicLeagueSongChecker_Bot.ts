@@ -112,9 +112,8 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
     }
 
-    console.log(interaction.user.id, config.discord_admin_user_id)
     if (interaction.commandName === "getlog" && interaction.user.id === config.discord_admin_user_id) {
-        await interaction.reply({files: ['../databases/audioListings.db']})
+        await interaction.reply({files: ['../../../scripts/nohup.out']})
     }
 });
 
