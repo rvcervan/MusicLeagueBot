@@ -113,7 +113,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.commandName === "getlog" && interaction.user.id === config.discord_admin_user_id) {
-        await interaction.reply({files: ['/home/rcer1997/Documents/DiscordBots/scripts/nohup.out']})
+        await interaction.reply({files: ['/home/rcer1997/Documents/DiscordBots/scripts/nohup.out', '/home/rcer1997/Documents/DiscordBots/BAEBots/MusicLeagueBot/databases/audioListings.db']})
     }
 });
 
