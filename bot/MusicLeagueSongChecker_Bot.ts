@@ -1,10 +1,10 @@
-import { AttachmentBuilder, Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
-import { checkForNewHeadfiListings, HeadfiListing, removeEndedHeadfiListings, updateHeadfiListingStatuses } from "../commands/utility/headfiScraper.ts";
+import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { addWatchTerm, deleteAllWatchTerms, listWatchTerms, removeWatchTerm } from "../commands/utility/discordListingInteractions.ts";
+import { checkForNewHeadfiListings, removeEndedHeadfiListings, updateHeadfiListingStatuses } from "../commands/utility/headfiScraper.ts";
 import { addInitTracksToDB, getTracksByArtistFromDB, getTracksFromDB, populateDBWithSpotifyPlaylistSongs, SpotifyStuff } from "../commands/utility/songCommands.ts";
 import { Database } from "../commands/utility/SQLiteDatabase.ts";
-import config from "../config.json" with { type: "json" };
-import { addWatchTerm, listWatchTerms, removeWatchTerm, deleteAllWatchTerms } from "../commands/utility/discordListingInteractions.ts";
 import { checkForNewUSAMListings, removeEndedUSAMListings, updateUSAMListingStatuses } from "../commands/utility/usamScraper.ts";
+import config from "../config.json" with { type: "json" };
 
 const spotifyDB = new Database();
 spotifyDB.initDB("musicLeague");
@@ -71,7 +71,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
             await interaction.reply({content: replyTrimmer(reply), flags: MessageFlags.Ephemeral})
         }
         else {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            await interaction.deferReply({});
             const reply = await populateDBWithSpotifyPlaylistSongs(spotifyDB.getDB(), playlistId, spotifyStuff);
             await interaction.editReply({content: replyTrimmer(reply)});
         }
@@ -113,7 +113,7 @@ const eventEmit = client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.commandName === "getlog" && interaction.user.id === config.discord_admin_user_id) {
-        await interaction.reply({files: ['../../../scripts/nohup.out']})
+        await interaction.reply({files: ['/home/rcer1997/Documents/DiscordBots/scripts/nohup.out']})
     }
 });
 
@@ -128,12 +128,14 @@ setInterval(async () => {
         usamListingsAddedSinceLastCheck += usamCount;
         // audiogonListingsAddedSinceLastCheck += audiogonCount;
         if (headfiListingsAddedSinceLastCheck >= 100) {
+            client.users.send(config.discord_admin_user_id, `${headfiListingsAddedSinceLastCheck} Head-Fi listings have been added, checking for prune targets.`);
             headfiListingsAddedSinceLastCheck = 0;
             await updateHeadfiListingStatuses(audioListingsDB.getDB());
             const removedMessage = removeEndedHeadfiListings(audioListingsDB.getDB());
             client.users.send(config.discord_admin_user_id, removedMessage);
         }
         if (usamListingsAddedSinceLastCheck >= 100) {
+            client.users.send(config.discord_admin_user_id, `${usamListingsAddedSinceLastCheck} USAM listings have been added, checking for prune targets.`);
             usamListingsAddedSinceLastCheck = 0;
             await updateUSAMListingStatuses(audioListingsDB.getDB());
             const removedMessage = removeEndedUSAMListings(audioListingsDB.getDB());

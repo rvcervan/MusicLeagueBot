@@ -84,19 +84,19 @@ export async function fetchWithRetry(url: string, maxRetries: number = 10, baseD
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`Response status: ${response.status}`);
+                throw new Error(`Response status: ${response.status} from URL ${url}`);
             }
             return response;
         } catch (error) {
             if (attempt < maxRetries - 1) {
                 const delay = baseDelay * Math.pow(2, attempt);
-                console.warn(`Fetch attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
+                console.warn(`Fetch attempt ${attempt + 1} failed from URL ${url},\nretrying in ${delay}ms...`, error);
                 await new Promise(resolve => setTimeout(resolve, delay));
             } else {
-                console.error(`Fetch failed after ${maxRetries} attempts:`, error);
+                console.error(`Fetch failed after ${maxRetries} attempts from URL ${url}:`, error);
                 throw error;
             }
         }
     }
-    return Promise.reject(new Error('Failed to fetch after maximum retries'));
+    return Promise.reject(new Error(`Failed to fetch after maximum retries from URL ${url}`));
 }

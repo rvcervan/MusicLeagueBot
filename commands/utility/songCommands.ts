@@ -57,49 +57,51 @@ export async function populateDBWithSpotifyPlaylistSongs(db: DatabaseSync, playl
     }
     
     const data = await response.json();
-    const playlistName = data.name;
-
+    
     //playlist owner must be from MusicLeague owner.
-    if (data.owner.display_name !== "Music League") {
-        return "Playlist owner must be Music League.";
+    if (data.owner.display_name === "Music League" || data.owner.display_name === "ML Spotify") {
+        const playlistName = data.name;
+        const tracks = data.tracks.items; //array of songs in the playlist
+    
+        let newCount = 0;
+        let duplicateCount = 0;
+        let body = "";
+        //Maybe make a type for this later
+        tracks.forEach((item: any) => {
+            const track = item.track;
+            const trackName = track.name;
+            const artistName = track.artists[0].name; //only takes the first artist for now I guess.
+            const albumName = track.album.name;
+            const isrc = track.external_ids.isrc;
+            const spotifyId = track.id;
+            const type = "playlist";
+    
+            if (db.prepare("SELECT spotifyId FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)) {
+                const existingPlaylistIds = db.prepare("SELECT playlistIds FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.playlistIds;
+                const existingPlaylistNames = db.prepare("SELECT playlistName FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.playlistName;
+                const newPlaylistIds = existingPlaylistIds?.toString().includes(playlistId) ? existingPlaylistIds : existingPlaylistIds + "␟" + playlistId;
+                const newPlaylistNames = existingPlaylistNames?.toString().includes(playlistName) ? existingPlaylistNames : existingPlaylistNames + "␟" + playlistName;
+                db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = count + 1 WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, spotifyId);
+                const count = db.prepare("SELECT count FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.count || 0;
+                body += `"${trackName}" by "${artistName}" - Duplicate. Count: ${count}\n`;
+                duplicateCount++;
+                return;
+            }
+    
+            db.prepare(`
+                INSERT INTO musicLeagueSubmittedSongs (spotifyId, trackName, artistName, albumName, playlistName, playlistIds, type, isrc, count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+            `).run(spotifyId, trackName, artistName, albumName, playlistName, playlistId, type, isrc);
+            // body += `"${trackName}" by "${artistName}" - New.\n`;
+            newCount++;
+        });
+    
+        return `Adding ${newCount+duplicateCount} songs from playlist "${playlistName}".\n${newCount} new, ${duplicateCount} duplicate.\n\n${body}`;
+    }
+    else {
+        return "Not a Music League Playlist"
     }
 
-    const tracks = data.tracks.items; //array of songs in the playlist
-
-    let newCount = 0;
-    let duplicateCount = 0;
-    let body = "";
-    //Maybe make a type for this later
-    tracks.forEach((item: any) => {
-        const track = item.track;
-        const trackName = track.name;
-        const artistName = track.artists[0].name; //only takes the first artist for now I guess.
-        const albumName = track.album.name;
-        const isrc = track.external_ids.isrc;
-        const spotifyId = track.id;
-        const type = "playlist";
-
-        if (db.prepare("SELECT spotifyId FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)) {
-            const existingPlaylistIds = db.prepare("SELECT playlistIds FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.playlistIds;
-            const existingPlaylistNames = db.prepare("SELECT playlistName FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.playlistName;
-            const newPlaylistIds = existingPlaylistIds?.toString().includes(playlistId) ? existingPlaylistIds : existingPlaylistIds + "␟" + playlistId;
-            const newPlaylistNames = existingPlaylistNames?.toString().includes(playlistName) ? existingPlaylistNames : existingPlaylistNames + "␟" + playlistName;
-            db.prepare("UPDATE musicLeagueSubmittedSongs SET playlistIds = ?, playlistName = ?, count = count + 1 WHERE spotifyId = ?").run(newPlaylistIds, newPlaylistNames, spotifyId);
-            const count = db.prepare("SELECT count FROM musicLeagueSubmittedSongs WHERE spotifyId = ?").get(spotifyId)?.count || 0;
-            body += `"${trackName}" by "${artistName}" - Duplicate. Count: ${count}\n`;
-            duplicateCount++;
-            return;
-        }
-
-        db.prepare(`
-            INSERT INTO musicLeagueSubmittedSongs (spotifyId, trackName, artistName, albumName, playlistName, playlistIds, type, isrc, count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-        `).run(spotifyId, trackName, artistName, albumName, playlistName, playlistId, type, isrc);
-        body += `"${trackName}" by "${artistName}" - New.\n`;
-        newCount++;
-    });
-
-    return `Adding ${newCount+duplicateCount} songs from playlist "${playlistName}".\n${newCount} new, ${duplicateCount} duplicate.\n\n${body}`;
 }
 
 export function getTracksFromDB(db: DatabaseSync, trackName: string) {

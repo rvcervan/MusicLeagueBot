@@ -50,7 +50,7 @@ export function removeEndedHeadfiListings(db: DatabaseSync): string {
 // Run this after every 100th listing added to the db.
 export async function updateHeadfiListingStatuses(db: DatabaseSync) {
     // Update listing statuses by iterating through all listing ids in db, fetching their page, and updating the status in the database if it has changed.
-    const listingIds = db.prepare("SELECT listingId FROM classifieds").all() as { listingId: number }[]; // Supposedly this is wrong
+    const listingIds = db.prepare("SELECT listingId FROM classifieds").all() as { listingId: number }[];
     for (const { listingId } of listingIds) {
         if (!listingId) continue;
         const response =  await fetchWithRetry(headfiClassifiedUrlBase+listingId);
@@ -59,7 +59,7 @@ export async function updateHeadfiListingStatuses(db: DatabaseSync) {
         const dom = new JSDOM(htmlText);
         const listing = dom.window.document.getElementsByClassName(listingTitleClassName);
         const listingStatus = listing.item(0)?.textContent.replaceAll('\t', '').replaceAll('\n', '').split(":")[0].trim();
-        if (listingStatus?.includes("Closed") || listingStatus?.includes("Sold") || listingStatus?.includes("Traded")) {
+        if ((listingStatus?.includes("Closed") && listingStatus.split(" ").length == 1) || (listingStatus?.includes("Sold") && listingStatus.split(" ").length == 1) || (listingStatus?.includes("Traded") && listingStatus.split(" ").length == 1)) {
             console.log(`Updating listing status for ${listingId} to ${listingStatus}`);
             db.prepare("UPDATE classifieds SET listingStatus = ? WHERE listingId = ?").run(listingStatus, listingId);
         }

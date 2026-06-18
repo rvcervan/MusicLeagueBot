@@ -25,7 +25,7 @@ export async function updateUSAMListingStatuses(db: DatabaseSync) {
         const dom = new JSDOM(htmlText);
         const listingName = dom.window.document.getElementsByClassName("cftitle");
         const listingStatus = listingName[0].textContent.split("-")[0].trim(); // Gets listing status
-        if (listingStatus.includes("OFF") || listingStatus.includes("SOLD")) {
+        if ((listingStatus.includes("OFF") && listingStatus.split(" ").length == 1) || (listingStatus.includes("SOLD") && listingStatus.split(" ").length == 1)) {
             console.log(`Updating listing status for ${listingUrl} to ${listingStatus}`);
             db.prepare("UPDATE usamListings SET listingStatus = ? WHERE listingUrl = ?").run(listingStatus, listingUrl);
         }
@@ -112,7 +112,7 @@ async function fetchWithRetry(url: string, maxRetries: number = 5, baseDelay: nu
                 }
             });
             if (!response.ok && response.status !== 403) {
-                throw new Error(`Response status: ${response.status}`);
+                throw new Error(`Response status: ${response.status} from url ${url}.`);
             }
             if (response.status === 403) { //Why does this work?
                 response = await fetch(url, {
@@ -128,13 +128,13 @@ async function fetchWithRetry(url: string, maxRetries: number = 5, baseDelay: nu
         } catch (error) {
             if (attempt < maxRetries - 1) {
                 const delay = baseDelay * Math.pow(2, attempt);
-                console.warn(`Fetch attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
+                console.warn(`Fetch attempt ${attempt + 1} failed  from url ${url},\nretrying in ${delay}ms...`, error);
                 await new Promise(resolve => setTimeout(resolve, delay));
             } else {
-                console.error(`Fetch failed after ${maxRetries} attempts:`, error);
+                console.error(`Fetch failed after ${maxRetries} attempts from url ${url}:`, error);
                 throw error;
             }
         }
     }
-    return Promise.reject(new Error('Failed to fetch after maximum retries'));
+    return Promise.reject(new Error(`Failed to fetch after maximum retries from url ${url}`));
 }
